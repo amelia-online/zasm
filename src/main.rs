@@ -1,5 +1,6 @@
 use regex::Regex;
 use std::io::{Read, Write};
+use std::u16;
 
 struct Instruction {
     opcode: u8,
@@ -61,6 +62,14 @@ fn parse_instr(syntax: String, p1: Param, p2: Param) -> Option<u8> {
     None
 }
 
+fn parse_hex(s: String) -> Option<u16> {
+    if let Ok(res) = u16::from_str_radix(s.as_str(), 16) {
+	Some(res)
+    } else {
+	None
+    }
+}
+
 fn parse_param(syntax: String) -> Option<Param> {
     use Param::*;
 
@@ -75,6 +84,14 @@ fn parse_param(syntax: String) -> Option<Param> {
     if syntax.starts_with("@") {
 	if let Some(reg) = parse_reg(&syntax) {
 	    return Some(Register(reg));
+	} else {
+	    return None;
+	}
+    }
+
+    if syntax.starts_with("0x") {
+	if let Some(imm) = parse_hex(syntax.strip_prefix("0x").unwrap().to_string()) {
+	    return Some(Immediate(imm));
 	} else {
 	    return None;
 	}
@@ -136,6 +153,8 @@ fn main() {
     parse("copy8 [@rg0], 1".to_string(), &instr_pattern);
 }
 
+// Tests start here.
+
 #[test]
 fn test_parse_reg() {
     let byte = parse_reg(&"@rg1".to_string());
@@ -160,5 +179,30 @@ fn test_parse_param1() {
     let s = String::from("[@rg0]");
     let actual = parse_param(s);
     let expected = Some(Deref(Box::new(Register(0x7))));
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn test_parse_param2() {
+    use Param::*;
+    let s = String::from("@ret");
+    let actual = parse_param(s);
+    let expected = Some(Register(1));
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn test_parse_param3() {
+    use Param::*;
+    let s = String::from("[[12]]");
+    let actual = parse_param(s);
+    let expected = Some(Deref(Box::new(Deref(Box::new(Immediate(12))))));
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn test_parse_with_hex() {
+    let actual = parse_param("0xAC".to_string());
+    let expected = Some(Param::Immediate(0xAC));
     assert_eq!(actual, expected);
 }
