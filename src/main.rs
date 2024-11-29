@@ -2,6 +2,7 @@ use regex::Regex;
 use std::io::{Read, Write};
 use std::u16;
 
+#[derive(Debug)]
 struct Instruction {
     opcode: u8,
     r1: u8,
@@ -52,14 +53,220 @@ fn parse(syntax: String, pat: &Regex) -> Option<Instruction> {
 	return None;
     }
 
-    let res_instr = parse_instr(instr.to_string(), res_p1.unwrap(), res_p2.unwrap());
+    let res_instr = parse_instr(instr.to_string(), &res_p1.unwrap(), &res_p2.unwrap());
 
     println!("{} - {} - {}", instr, p1, p2);
     return Some(Instruction::new());
 }
 
-fn parse_instr(syntax: String, p1: Param, p2: Param) -> Option<u8> {
-    None
+fn match_copy(p1: &Param, p2: &Param, v1: u8, v2: u8, v3: u8, v4: u8) -> Option<u8> {
+    use Param::*;
+    match p1 {
+	Deref(_) => {
+	    match p2 {
+		Register(_) => Some(v1),
+		_ => None,
+	    }
+	},
+	Register(_) => {
+	    match p2 {
+		Deref(_) => Some(v2),
+		Register(_) => Some(v3),
+		Immediate(_) => Some(v4),
+	    }
+	},
+	Immediate(_) => None,
+    }
+}
+
+fn parse_instr(syntax: String, p1: &Param, p2: &Param) -> Option<u8> {
+    use Param::*;
+    // I'm so sorry.
+    match syntax.trim() {
+	"writes" => {
+	    match p1 {
+		Deref(_)     => {
+		    match p2 {
+			Immediate(_) => Some(0),
+			_ => None,
+		    }
+		},
+		Register(_)  => {
+		    match p2 {
+			Immediate(_) => Some(1),
+			_ => None,
+		    }
+		},
+		_ => None,
+	    }
+	},
+	"write" => Some(0x2),
+	"copy8" => match_copy(p1, p2, 0x10, 0xC, 0x4, 0x8),
+	"copy16" => match_copy(p1, p2, 0x11, 0xD, 0x5, 0x9),
+	"copy32" => match_copy(p1, p2, 0x12, 0xE, 0x6, 0xA),
+	"copy64" => match_copy(p1, p2, 0x13, 0xF, 0x7, 0xB),
+	"push8" => Some(0x14),
+	"push16" => Some(0x15),
+	"push32" => Some(0x16),
+	"push64" => Some(0x17),
+	"pop8" => Some(0x18),
+	"pop16" => Some(0x19),
+	"pop32" => Some(0x1A),
+	"pop64" => Some(0x1B),
+	"goto" => Some(0x1C),
+	"call" => Some(0x1D),
+	"sys" => Some(0x1E),
+	"cmp" => {
+	    match p1 {
+		Register(_) => {
+		    match p2 {
+			Register(_) => Some(0x1F),
+			Immediate(_) => Some(0x20),
+			_ => None,
+		    }
+		},
+		_ => None,
+	    }
+	},
+	"jge" => Some(0x21),
+	"jg" => Some(0x22),
+	"jle" => Some(0x23),
+	"jl" => Some(0x24),
+	"je" => Some(0x25),
+	"jne" => Some(0x26),
+	"add" => {
+	    match p1 {
+		Register(_) => {
+		    match p2 {
+			Register(_) => Some(0x27),
+			Deref(_) => Some(0x28),
+			Immediate(_) => Some(0x29),
+		    }
+		},
+
+		_ => None,
+	    }
+	},
+	
+	"sub" => {
+	    match p1 {
+		Register(_) => {
+		    match p2 {
+			Register(_) => Some(0x2A),
+			Deref(_) => Some(0x2B),
+			Immediate(_) => Some(0x2C),
+		    }
+		},
+
+		_ => None,
+	    }
+	},
+	
+	"mult" => {
+	    match p1 {
+		Register(_) => {
+		    match p2 {
+			Register(_) => Some(0x2D),
+			Deref(_) => Some(0x2E),
+			Immediate(_) => Some(0x2F),
+		    }
+		},
+
+		_ => None,
+	    }
+	},
+	
+	"div" => {
+	    match p1 {
+		Register(_) => {
+		    match p2 {
+			Register(_) => Some(0x30),
+			Deref(_) => Some(0x31),
+			Immediate(_) => Some(0x32),
+		    }
+		},
+
+		_ => None,
+	    }
+	},
+	
+	"mod" => {
+	    match p1 {
+		Register(_) => {
+		    match p2 {
+			Register(_) => Some(0x33),
+			Deref(_) => Some(0x34),
+			Immediate(_) => Some(0x35),
+		    }
+		},
+
+		_ => None,
+	    }
+	},
+	"shr" => {
+	    match p1 {
+		Register(_) => {
+		    match p2 {
+			Immediate(_) => Some(0x36),
+			Register(_) => Some(0x42),
+			_ => None,
+		    }
+		},
+		_ => None,
+	    }
+	},
+	"shl" => {
+	    match p1 {
+		Register(_) => {
+		    match p2 {
+			Immediate(_) => Some(0x37),
+			Register(_) => Some(0x43),
+			_ => None,
+		    }
+		},
+		_ => None,
+	    }
+	},
+	"and" => {
+	    match p1 {
+		Register(_) => {
+		    match p2 {
+			Register(_) => Some(0x38),
+			Immediate(_) => Some(0x39),
+			_ => None,
+		    }
+		},
+		_ => None,
+	    }
+	},
+	"or" => {
+	    match p1 {
+		Register(_) => {
+		    match p2 {
+			Register(_) => Some(0x3A),
+			Immediate(_) => Some(0x3B),
+			_ => None,
+		    }
+		},
+		_ => None,
+	    }
+	},
+	"xor" => {
+	    match p1 {
+		Register(_) => {
+		    match p2 {
+			Register(_) => Some(0x3C),
+			Immediate(_) => Some(0x3D),
+			_ => None,
+		    }
+		},
+		_ => None,
+	    }
+	},
+	"not" => Some(0x3E),
+	"read" => None, // TBD
+ 	_ => None,
+    }
 }
 
 fn parse_hex(s: String) -> Option<u16> {
