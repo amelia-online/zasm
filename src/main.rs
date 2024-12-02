@@ -10,7 +10,7 @@ struct Instruction {
     imm: u16,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 enum Param {
     Immediate(u16),
     Register(u8),
@@ -28,18 +28,42 @@ impl Instruction {
     }
 
     pub fn from(opcode: u8, r1: u8, r2: u8, imm: u16) -> Self {
-	Self {
-	    opcode: opcode,
-	    r1: r1,
-	    r2: r2,
-	    imm: imm,
-	}
+		Self {
+	    	opcode: opcode,
+	    	r1: r1,
+	    	r2: r2,
+	    	imm: imm,
+		}
+    }
+
+    pub fn from_params(opcode: u8, p1: Param, p2: Param) -> Self {
+		use Param::*;
+		Self {
+	    	opcode: opcode,
+	    	r1: match p1 {
+				Register(n) => n,
+				_ => 0,
+	    		},
+	    	r2: match p2 {
+				Register(n) => n,
+				_ => 0,
+	   		 	},
+	    		imm: match p2 {
+				Immediate(n) => n,
+			_ => 0,
+	    	},
+	    
+		}
+    }
+
+    pub fn to_bytes(&self) -> [u8; 4] {
+
     }
 }
 
 fn parse(syntax: String, pat: &Regex) -> Option<Instruction> {
     if !pat.is_match(syntax.as_str()) {
-	return None;
+		return None;
     }
     let caps = pat.captures(syntax.as_str()).unwrap();
     let instr = &caps["i"];
@@ -50,13 +74,14 @@ fn parse(syntax: String, pat: &Regex) -> Option<Instruction> {
     let res_p2 = parse_param(p2.to_string());
 
     if res_p1.is_none() || res_p2.is_none() {
-	return None;
+		return None;
     }
 
-    let res_instr = parse_instr(instr.to_string(), &res_p1.unwrap(), &res_p2.unwrap());
-
-    println!("{} - {} - {}", instr, p1, p2);
-    return Some(Instruction::new());
+    if let Some(res_instr) = parse_instr(instr.to_string(), &(res_p1.unwrap()), &(res_p2.unwrap())) {
+		Some(Instruction::from_params(res_instr, res_p1.clone().unwrap(), res_p2.clone().unwrap()))
+    } else {
+		None
+    }
 }
 
 fn match_copy(p1: &Param, p2: &Param, v1: u8, v2: u8, v3: u8, v4: u8) -> Option<u8> {
@@ -76,6 +101,34 @@ fn match_copy(p1: &Param, p2: &Param, v1: u8, v2: u8, v3: u8, v4: u8) -> Option<
 	    }
 	},
 	Immediate(_) => None,
+    }
+}
+
+fn match_arithmetic(p1: &Param, p2: &Param, rr: u8, rd: u8, ri: u8) -> Option<u8> {
+    use Param::*;
+    match p1 {
+	Register(_) => {
+	    match p2 {
+		Register(_) => Some(rr),
+		Deref(_) => Some(rd),
+		Immediate(_) => Some(ri),
+	    }
+	},	
+	_ => None,
+    }
+}
+
+fn match_bitwise(p1: &Param, p2: &Param, rr: u8, ri: u8) -> Option<u8> {
+    use Param::*;
+    match p1 {
+	Register(_) => {
+	    match p2 {
+		Register(_) => Some(rr),
+		Immediate(_) => Some(ri),
+		_ => None,
+	    }
+	},
+	_ => None,
     }
 }
 
@@ -134,75 +187,11 @@ fn parse_instr(syntax: String, p1: &Param, p2: &Param) -> Option<u8> {
 	"jl" => Some(0x24),
 	"je" => Some(0x25),
 	"jne" => Some(0x26),
-	"add" => {
-	    match p1 {
-		Register(_) => {
-		    match p2 {
-			Register(_) => Some(0x27),
-			Deref(_) => Some(0x28),
-			Immediate(_) => Some(0x29),
-		    }
-		},
-
-		_ => None,
-	    }
-	},
-	
-	"sub" => {
-	    match p1 {
-		Register(_) => {
-		    match p2 {
-			Register(_) => Some(0x2A),
-			Deref(_) => Some(0x2B),
-			Immediate(_) => Some(0x2C),
-		    }
-		},
-
-		_ => None,
-	    }
-	},
-	
-	"mult" => {
-	    match p1 {
-		Register(_) => {
-		    match p2 {
-			Register(_) => Some(0x2D),
-			Deref(_) => Some(0x2E),
-			Immediate(_) => Some(0x2F),
-		    }
-		},
-
-		_ => None,
-	    }
-	},
-	
-	"div" => {
-	    match p1 {
-		Register(_) => {
-		    match p2 {
-			Register(_) => Some(0x30),
-			Deref(_) => Some(0x31),
-			Immediate(_) => Some(0x32),
-		    }
-		},
-
-		_ => None,
-	    }
-	},
-	
-	"mod" => {
-	    match p1 {
-		Register(_) => {
-		    match p2 {
-			Register(_) => Some(0x33),
-			Deref(_) => Some(0x34),
-			Immediate(_) => Some(0x35),
-		    }
-		},
-
-		_ => None,
-	    }
-	},
+	"add" => match_arithmetic(p1, p2, 0x27, 0x28, 0x29),
+	"sub" => match_arithmetic(p1, p2, 0x2A, 0x2B, 0x2C),
+	"mult" => match_arithmetic(p1, p2, 0x2D, 0x2E, 0x2F),
+	"div" => match_arithmetic(p1, p2, 0x30, 0x31, 0x32),
+	"mod" => match_arithmetic(p1, p2, 0x33, 0x34, 0x35),
 	"shr" => {
 	    match p1 {
 		Register(_) => {
@@ -227,42 +216,9 @@ fn parse_instr(syntax: String, p1: &Param, p2: &Param) -> Option<u8> {
 		_ => None,
 	    }
 	},
-	"and" => {
-	    match p1 {
-		Register(_) => {
-		    match p2 {
-			Register(_) => Some(0x38),
-			Immediate(_) => Some(0x39),
-			_ => None,
-		    }
-		},
-		_ => None,
-	    }
-	},
-	"or" => {
-	    match p1 {
-		Register(_) => {
-		    match p2 {
-			Register(_) => Some(0x3A),
-			Immediate(_) => Some(0x3B),
-			_ => None,
-		    }
-		},
-		_ => None,
-	    }
-	},
-	"xor" => {
-	    match p1 {
-		Register(_) => {
-		    match p2 {
-			Register(_) => Some(0x3C),
-			Immediate(_) => Some(0x3D),
-			_ => None,
-		    }
-		},
-		_ => None,
-	    }
-	},
+	"and" => match_bitwise(p1, p2, 0x38, 0x39),
+	"or" => match_bitwise(p1, p2, 0x3A, 0x3B),
+	"xor" => match_bitwise(p1, p2, 0x3C, 0x3D),
 	"not" => Some(0x3E),
 	"read" => None, // TBD
  	_ => None,
@@ -287,7 +243,7 @@ fn parse_param(syntax: String) -> Option<Param> {
 	    return None;
 	}
     }
-
+    
     if syntax.starts_with("@") {
 	if let Some(reg) = parse_reg(&syntax) {
 	    return Some(Register(reg));
@@ -357,7 +313,31 @@ fn file_to_string(path: String) -> Result<String, ()> {
 fn main() {
     let instr_pattern = Regex::new(r"^(?<i>\w+) (?<p1>[ -~]+), (?<p2>[ -~]+)$").unwrap();
     let args = std::env::args().collect::<Vec<String>>();
-    parse("copy8 [@rg0], 1".to_string(), &instr_pattern);
+
+    if args.len() < 2 {
+	println!("Please provide a file path.");
+	std::process::exit(0);
+    }
+ 
+    if let Ok(text) = file_to_string(args[1].to_owned()) {
+	let mut output = std::fs::File::create("./a.out.zm").unwrap();
+	let lines: Vec<String> = text
+	    .split("\n")
+	    .map(|s| s.to_string())
+	    .collect();
+	
+	for line in lines {
+	    if let Some(instr) = parse(line, &instr_pattern) {
+		let bytes = instr.to_bytes();
+		output.write_all(&bytes);
+	    }
+	}
+    } else {
+	println!("Could not open file `{}`", &args[1]);
+	std::process::exit(0);
+    }
+    
+    
 }
 
 // Tests start here.
