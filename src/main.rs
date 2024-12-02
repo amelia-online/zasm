@@ -65,10 +65,7 @@ impl Instruction {
     }
 }
 
-fn parse(syntax: String, pat: &Regex) -> Option<Instruction> {
-    if !pat.is_match(syntax.as_str()) {
-		return None;
-    }
+fn parse_dbl(syntax: String, pat: &Regex) -> Option<Instruction> {
     let caps = pat.captures(syntax.as_str()).unwrap();
     let instr = &caps["i"];
     let str_p1 = &caps["p1"];
@@ -228,6 +225,7 @@ fn parse_instr(syntax: String, p1: &Param, p2: &Param) -> Option<u8> {
 	"xor" => match_bitwise(p1, p2, 0x3C, 0x3D),
 	"not" => Some(0x3E),
 	"read" => None, // TBD
+	"writei" => Some(0x40),
  	_ => None,
     }
 }
@@ -307,6 +305,34 @@ fn parse_reg(syntax: &String) -> Option<u8>{
     }
 }
 
+fn parse_sngl(syntax: String, sap: &Regex) -> Option<Instruction> {
+    let caps = sap.captures(syntax.as_str()).unwrap();
+    let instr = (&caps["i"]).to_string();
+    let infoi = instr.clone();
+    let str_p1 = (&caps["p1"]).to_string();
+    if let Some(p1) = parse_param(str_p1) {
+	if let Some(res_instr) = parse_instr(instr, &p1, &Param::Immediate(0)) {
+	    Some(Instruction::from_params(res_instr, p1, Param::Immediate(0)))
+	} else {
+	    println!("Error: could not parse instruction: '{}'", infoi);
+	    None
+	}
+    } else {
+	println!("Error: could not parse parameter.");
+	None
+    }
+}
+
+fn parse(line: String, dblpat: &Regex, snglpat: &Regex) -> Option<Instruction> {
+    if dblpat.is_match(line.as_str()) {
+	return parse_dbl(line, dblpat);
+    } else if snglpat.is_match(line.as_str()) {
+	return parse_sngl(line, snglpat);
+    } else {
+	return None;
+    }
+}
+
 fn file_to_string(path: String) -> Result<String, ()> {
     if let Ok(mut file) = std::fs::File::open(path) {
 	let mut buf = String::new();
@@ -319,6 +345,7 @@ fn file_to_string(path: String) -> Result<String, ()> {
 
 fn main() {
     let instr_pattern = Regex::new(r"^(?<i>\w+) (?<p1>[ -~]+), (?<p2>[ -~]+)$").unwrap();
+    let single_arg_pattern = Regex::new(r"^(?<i>\w+) (?<p1>[ -~]+)$").unwrap();
     let args = std::env::args().collect::<Vec<String>>();
 
     if args.len() < 2 {
@@ -332,11 +359,22 @@ fn main() {
 	    .split("\n")
 	    .map(|s| s.to_string())
 	    .collect();
-	
-	for line in lines {
-	    if let Some(instr) = parse(line, &instr_pattern) {
+
+	//println!("lines: {:?}", lines);
+	for (i, line) in lines.iter().enumerate() {
+
+	    if line.is_empty() {
+		continue;
+	    }
+	    
+	    let linei = line.clone();
+	    if let Some(instr) = parse(line.to_owned(), &instr_pattern, &single_arg_pattern) {
 		let bytes = instr.to_bytes();
-		let _ = output.write_all(&bytes);
+		for byte in bytes {
+		    let _ = output.write(&[byte]);
+		}
+	    } else {
+		println!("Error on line {i}: unrecognized instruction encountered: '{}'", linei);
 	    }
 	}
     } else {
@@ -420,4 +458,21 @@ fn instr_from_params() {
     let instr = Instruction::from_params(0x21, Param::Register(0x7), Param::Immediate(0x2));
     let actual = instr.to_bytes();
     assert_eq!(actual, [0x21, 0x70, 0x0, 0x2]);
+}
+
+#[test]
+fn parse_instr_cmp() {
+    let instr_pattern = Regex::new(r"^(?<i>\w+) (?<p1>[ -~]+), (?<p2>[ -~]+)$").unwrap();
+    let instr = parse("cmp @rg0, 0x21".to_string(), &instr_pattern);
+    assert!(instr.is_some());
+    let bytes = instr.unwrap().to_bytes();
+    assert_eq!(bytes, [0x20, 0x70, 0x00, 0x21]);
+}
+
+#[test]
+fn parse2_instr() {
+    let single_arg_pattern = Regex::new(r"^(?<i>\w+) (?<p1>[ -~]+)$").unwrap();
+    let res = parse2("pop8 @rg0".to_string(), &single_arg_pattern);
+    assert!(res.is_some());
+    assert_eq!(res.unwrap().to_bytes(), [0x18, 0x70, 0x0, 0x00]);
 }
