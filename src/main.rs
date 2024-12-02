@@ -37,27 +37,31 @@ impl Instruction {
     }
 
     pub fn from_params(opcode: u8, p1: Param, p2: Param) -> Self {
-		use Param::*;
-		Self {
-	    	opcode: opcode,
-	    	r1: match p1 {
-				Register(n) => n,
-				_ => 0,
-	    		},
-	    	r2: match p2 {
-				Register(n) => n,
-				_ => 0,
-	   		 	},
-	    		imm: match p2 {
-				Immediate(n) => n,
-			_ => 0,
-	    	},
+	use Param::*;
+	Self {
+	    opcode: opcode,
+	    r1: match p1 {
+		Register(n) => n,
+		_ => 0,
+	    },
+	    r2: match p2 {
+		Register(n) => n,
+		_ => 0,
+	    },
+	    imm: match p2 {
+		Immediate(n) => n,
+		_ => 0,
+	    },
 	    
-		}
+	}
     }
 
     pub fn to_bytes(&self) -> [u8; 4] {
-
+	let b1 = self.opcode;
+	let b2 = (self.r1 << 4) | self.r2;
+	let b3: u8 = ((self.imm >> 8) & 0xFF).try_into().unwrap();
+	let b4 = (self.imm & 0xFF).try_into().unwrap();
+	[b1, b2, b3, b4]
     }
 }
 
@@ -67,20 +71,23 @@ fn parse(syntax: String, pat: &Regex) -> Option<Instruction> {
     }
     let caps = pat.captures(syntax.as_str()).unwrap();
     let instr = &caps["i"];
-    let p1 = &caps["p1"];
-    let p2 = &caps["p2"];
+    let str_p1 = &caps["p1"];
+    let str_p2 = &caps["p2"];
 
-    let res_p1 = parse_param(p1.to_string());
-    let res_p2 = parse_param(p2.to_string());
+    let opt_p1 = parse_param(str_p1.to_string());
+    let opt_p2 = parse_param(str_p2.to_string());
 
-    if res_p1.is_none() || res_p2.is_none() {
+    if opt_p1.is_none() || opt_p2.is_none() {
 		return None;
     }
 
-    if let Some(res_instr) = parse_instr(instr.to_string(), &(res_p1.unwrap()), &(res_p2.unwrap())) {
-		Some(Instruction::from_params(res_instr, res_p1.clone().unwrap(), res_p2.clone().unwrap()))
+    let p1 = opt_p1.unwrap();
+    let p2 = opt_p2.unwrap();
+
+    if let Some(res_instr) = parse_instr(instr.to_string(), &p1, &p2) {
+	Some(Instruction::from_params(res_instr, p1, p2))
     } else {
-		None
+	None
     }
 }
 
@@ -329,7 +336,7 @@ fn main() {
 	for line in lines {
 	    if let Some(instr) = parse(line, &instr_pattern) {
 		let bytes = instr.to_bytes();
-		output.write_all(&bytes);
+		let _ = output.write_all(&bytes);
 	    }
 	}
     } else {
@@ -392,4 +399,25 @@ fn test_parse_with_hex() {
     let actual = parse_param("0xAC".to_string());
     let expected = Some(Param::Immediate(0xAC));
     assert_eq!(actual, expected);
+}
+
+#[test]
+fn test_instr_to_bytes() {
+    let instr = Instruction::from(0x21, 0x7, 0x8, 0x0);
+    let actual = instr.to_bytes();
+    assert_eq!(actual, [0x21, 0x78, 0x0, 0x0]);
+}
+
+#[test]
+fn test_instr_to_bytes_imm() {
+    let instr = Instruction::from(0x21, 0x0, 0x0, 0x2040);
+    let bytes = instr.to_bytes();
+    assert_eq!(bytes, [0x21, 0x0, 0x20, 0x40]);
+}
+
+#[test]
+fn instr_from_params() {
+    let instr = Instruction::from_params(0x21, Param::Register(0x7), Param::Immediate(0x2));
+    let actual = instr.to_bytes();
+    assert_eq!(actual, [0x21, 0x70, 0x0, 0x2]);
 }
