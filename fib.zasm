@@ -1,0 +1,14 @@
+copy8 @rg0, 0
+copy8 @rg1, 1
+copy8 @rg2, 0
+copy8 @rg3, 10
+writei @rg1
+write @rg3
+add @rg2, 1
+add @rg4, @rg0
+add @rg4, @rg1
+copy32 @rg0, @rg1
+copy32 @rg1, @rg4
+copy8 @rg4, 0
+cmp @rg2, 25
+jl 4

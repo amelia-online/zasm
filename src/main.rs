@@ -14,7 +14,7 @@ struct Instruction {
 enum Param {
     Immediate(u16),
     Register(u8),
-    Deref(Box<Param>)
+    Deref(Box<Param>),
 }
 
 impl Instruction {
@@ -28,12 +28,12 @@ impl Instruction {
     }
 
     pub fn from(opcode: u8, r1: u8, r2: u8, imm: u16) -> Self {
-		Self {
-	    	opcode: opcode,
-	    	r1: r1,
-	    	r2: r2,
-	    	imm: imm,
-		}
+	Self {
+	    opcode: opcode,
+	    r1: r1,
+	    r2: r2,
+	    imm: imm,
+	}
     }
 
     pub fn from_params(opcode: u8, p1: Param, p2: Param) -> Self {
@@ -312,7 +312,8 @@ fn parse_sngl(syntax: String, sap: &Regex) -> Option<Instruction> {
     let str_p1 = (&caps["p1"]).to_string();
     if let Some(p1) = parse_param(str_p1) {
 	if let Some(res_instr) = parse_instr(instr, &p1, &Param::Immediate(0)) {
-	    Some(Instruction::from_params(res_instr, p1, Param::Immediate(0)))
+	    let p2 = p1.clone(); // Temp solution
+	    Some(Instruction::from_params(res_instr, p1, p2))
 	} else {
 	    println!("Error: could not parse instruction: '{}'", infoi);
 	    None
@@ -333,6 +334,14 @@ fn parse(line: String, dblpat: &Regex, snglpat: &Regex) -> Option<Instruction> {
     }
 }
 
+// Example:
+// data {
+//    str: "Hello, world!\n" ; <--- This is a field
+// }
+fn parse_field(syntax: String, fpat: &Regex) -> Option<u8> {
+    None
+}
+
 fn file_to_string(path: String) -> Result<String, ()> {
     if let Ok(mut file) = std::fs::File::open(path) {
 	let mut buf = String::new();
@@ -346,15 +355,18 @@ fn file_to_string(path: String) -> Result<String, ()> {
 fn main() {
     let instr_pattern = Regex::new(r"^(?<i>\w+) (?<p1>[ -~]+), (?<p2>[ -~]+)$").unwrap();
     let single_arg_pattern = Regex::new(r"^(?<i>\w+) (?<p1>[ -~]+)$").unwrap();
+    let field_pat = Regex::new(r"^(?<n>\w+): (?<item>)").unwrap();
     let args = std::env::args().collect::<Vec<String>>();
-
+    
     if args.len() < 2 {
 	println!("Please provide a file path.");
 	std::process::exit(0);
     }
+
+    let mut output_name = String::from("a.out.zm");
  
     if let Ok(text) = file_to_string(args[1].to_owned()) {
-	let mut output = std::fs::File::create("./a.out.zm").unwrap();
+	let mut output = std::fs::File::create(format!("./{}", output_name)).unwrap();
 	let lines: Vec<String> = text
 	    .split("\n")
 	    .map(|s| s.to_string())
@@ -363,18 +375,22 @@ fn main() {
 	//println!("lines: {:?}", lines);
 	for (i, line) in lines.iter().enumerate() {
 
-	    if line.is_empty() {
+	    if line.is_empty() || line.starts_with(";") {
 		continue;
 	    }
+
+	    //println!("{}", &line);
 	    
 	    let linei = line.clone();
 	    if let Some(instr) = parse(line.to_owned(), &instr_pattern, &single_arg_pattern) {
+	//	println!("{:?}", instr);
 		let bytes = instr.to_bytes();
+		//println!("{:?}", bytes);
 		for byte in bytes {
 		    let _ = output.write(&[byte]);
 		}
 	    } else {
-		println!("Error on line {i}: unrecognized instruction encountered: '{}'", linei);
+		println!("Error on line {}: unrecognized instruction encountered: '{}'", i+1, linei);
 	    }
 	}
     } else {
