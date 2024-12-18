@@ -1,6 +1,8 @@
 use regex::Regex;
 use std::io::{Read, Write};
 use std::u16;
+use std::collections::HashMap;
+mod zasmenv;
 
 #[derive(Debug)]
 struct Instruction {
@@ -305,11 +307,14 @@ fn parse_reg(syntax: &String) -> Option<u8>{
     }
 }
 
-fn parse_sngl(syntax: String, sap: &Regex) -> Option<Instruction> {
+fn parse_sngl(syntax: String, sap: &Regex, labels: &HashMap<String, u16>) -> Option<Instruction> {
     let caps = sap.captures(syntax.as_str()).unwrap();
     let instr = (&caps["i"]).to_string();
     let infoi = instr.clone();
-    let str_p1 = (&caps["p1"]).to_string();
+    let mut str_p1 = (&caps["p1"]).to_string();
+    if labels.contains_key(&str_p1) {
+	str_p1 = String::from(format!("{}", labels.get(&str_p1).unwrap()));
+    }
     if let Some(p1) = parse_param(str_p1) {
 	if let Some(res_instr) = parse_instr(instr, &p1, &Param::Immediate(0)) {
 	    let p2 = p1.clone(); // Temp solution
@@ -324,22 +329,14 @@ fn parse_sngl(syntax: String, sap: &Regex) -> Option<Instruction> {
     }
 }
 
-fn parse(line: String, dblpat: &Regex, snglpat: &Regex) -> Option<Instruction> {
+fn parse(line: String, dblpat: &Regex, snglpat: &Regex, labels: &HashMap<String, u16>) -> Option<Instruction> {
     if dblpat.is_match(line.as_str()) {
 	return parse_dbl(line, dblpat);
     } else if snglpat.is_match(line.as_str()) {
-	return parse_sngl(line, snglpat);
+	return parse_sngl(line, snglpat, labels);
     } else {
 	return None;
     }
-}
-
-// Example:
-// data {
-//    str: "Hello, world!\n" ; <--- This is a field
-// }
-fn parse_field(syntax: String, fpat: &Regex) -> Option<u8> {
-    None
 }
 
 fn file_to_string(path: String) -> Result<String, ()> {
@@ -372,25 +369,31 @@ fn main() {
 	    .map(|s| s.to_string())
 	    .collect();
 
-	//println!("lines: {:?}", lines);
+	let mut labels: HashMap<String, u16> = HashMap::new();
+	let mut instr_counter = 0;
 	for (i, line) in lines.iter().enumerate() {
 
-	    if line.is_empty() || line.starts_with(";") {
+	    if line.is_empty() || line.starts_with(";") { // Primitive checking for comment.
 		continue;
 	    }
 
-	    //println!("{}", &line);
+	    if line.ends_with(":") { // Primitive checking for label.
+		let mut label = line.trim().to_owned();
+		label.pop();
+		labels.insert(label, instr_counter);
+		continue;
+	    }
 	    
 	    let linei = line.clone();
-	    if let Some(instr) = parse(line.to_owned(), &instr_pattern, &single_arg_pattern) {
-	//	println!("{:?}", instr);
+	    if let Some(instr) = parse(line.to_owned(), &instr_pattern, &single_arg_pattern, &labels) {
+		instr_counter += 1;
 		let bytes = instr.to_bytes();
-		//println!("{:?}", bytes);
 		for byte in bytes {
 		    let _ = output.write(&[byte]);
 		}
 	    } else {
 		println!("Error on line {}: unrecognized instruction encountered: '{}'", i+1, linei);
+		std::process::exit(0);
 	    }
 	}
     } else {
@@ -479,7 +482,9 @@ fn instr_from_params() {
 #[test]
 fn parse_instr_cmp() {
     let instr_pattern = Regex::new(r"^(?<i>\w+) (?<p1>[ -~]+), (?<p2>[ -~]+)$").unwrap();
-    let instr = parse("cmp @rg0, 0x21".to_string(), &instr_pattern);
+    let sngl_pat = Regex::new(r"^(?<i>\w+) (?<p1>[ -~]+)$").unwrap();
+    let instr = parse("cmp @rg0, 0x21".to_string(), &instr_pattern,
+		      &sngl_pat);
     assert!(instr.is_some());
     let bytes = instr.unwrap().to_bytes();
     assert_eq!(bytes, [0x20, 0x70, 0x00, 0x21]);
@@ -488,7 +493,7 @@ fn parse_instr_cmp() {
 #[test]
 fn parse2_instr() {
     let single_arg_pattern = Regex::new(r"^(?<i>\w+) (?<p1>[ -~]+)$").unwrap();
-    let res = parse2("pop8 @rg0".to_string(), &single_arg_pattern);
+    let res = parse_sngl("pop8 @rg0".to_string(), &single_arg_pattern);
     assert!(res.is_some());
     assert_eq!(res.unwrap().to_bytes(), [0x18, 0x70, 0x0, 0x00]);
 }
